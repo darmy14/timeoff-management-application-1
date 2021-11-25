@@ -23,6 +23,8 @@ This is a Docker image pushed to the aws repo.
 
 This is the web app running with all aws services created whit aws cloudformation file.
 
+http://timeo-goril-1p23q03i5a20t-1992500154.us-east-1.elb.amazonaws.com/login/ 
+
 ![](https://github.com/darmy14/timeoff-management-application-1/blob/master/DevOps%20Challenge%20Senior%20Solution%20-%20Darmi%20Herrera/Images/timeoff-onAWS.PNG?raw=true)
 
 **The application should be highly available, and load balanced.**
