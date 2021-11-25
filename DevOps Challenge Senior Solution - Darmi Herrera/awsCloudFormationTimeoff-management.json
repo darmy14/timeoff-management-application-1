@@ -1,0 +1,613 @@
+{
+  "AWSTemplateFormatVersion": "2010-09-09",
+  "Description": "CloudFormation template for DevOps Challenge Senior - Timeoff-management",
+  "Parameters": {
+    "KeyName": {
+      "Description": "Name of an existing EC2 KeyPair to enable access to the instance",
+      "Type": "AWS::EC2::KeyPair::KeyName",
+      "Default": "gorilla",
+      "AllowedValues": [
+        "gorilla"
+      ],
+      "ConstraintDescription": "must be the name of an existing EC2 KeyPair."
+    },
+    "Environment": {
+      "Description": "Name of environment to deploy to",
+      "Type": "String",
+      "Default": "qa",
+      "AllowedValues": [
+        "development",
+        "production",
+        "uat",
+        "qa"
+      ],
+      "ConstraintDescription": "Must be either 'development', 'production', 'qa' or 'uat'"
+    },
+    "PriceForSpot": {
+      "Description": "Spot Price can change",
+      "Type": "String",
+      "Default": "0.0169"
+    },
+    "GORILLATaskDefinition": {
+      "Description": "Name of Task Definition and revision number",
+      "Type": "String",
+      "Default": "arn:aws:ecs:us-east-1:587764720640:task-definition/timeoff-gorilla:1"
+    },
+    "Domain": {
+      "Description": "Domain this stack belongs to",
+      "Type": "String",
+      "Default": "virginia",
+      "AllowedValues": [
+        "virginia",
+        "qa",
+        "uat"
+      ],
+      "ConstraintDescription": "Must be either 'virginia', 'qa', 'uat'"
+    }
+  },
+  "Mappings": {
+    "GlobalMap": {
+      "InstType": {
+        "development": "t2.micro",
+        "production": "t2.micro",
+        "qa": "t2.micro",
+        "uat": "t2.micro"
+      },
+      "ASGMinSize": {
+        "development": "1",
+        "production": "2",
+        "qa": "1",
+        "uat": "1"
+      },
+      "ASGMaxSize": {
+        "development": "2",
+        "production": "4",
+        "qa": "2",
+        "uat": "2"
+      },
+      "MinimumHealthy": {
+        "development": "0",
+        "production": "50",
+        "qa": "0",
+        "uat": "0"
+      }
+    },
+    "InstanceAMI": {
+      "us-east-1": {
+        "development": "ami-0eba366342cb1dfda",
+        "production": "ami-0eba366342cb1dfda",
+        "qa": "ami-0eba366342cb1dfda",
+        "uat": "ami-0eba366342cb1dfda"
+      },
+      "eu-west-2": {
+        "development": "ami-3622cf51",
+        "production": "ami-3622cf51",
+        "qa": "ami-3622cf51",
+        "uat": "ami-3622cf51"
+      }
+    },
+    "SecurityGroups": {
+      "us-east-1": {
+        "development": "sg-2f8e5f1c",
+        "production": "sg-2f8e5f1c",
+        "qa": "sg-2f8e5f1c",
+        "uat": "sg-2f8e5f1c"
+      },
+      "eu-west-2": {
+        "development": "sg-593faf30",
+        "production": "sg-f13faf98"
+      }
+    },
+    "VPCSubnetsMap": {
+      "us-east-1": {
+        "development": [
+          "subnet-e0f938d1",
+          "subnet-a94805e4",
+          "subnet-89ae16a8",
+          "subnet-f3cd73ac",
+          "subnet-4a146344",
+          "subnet-832b99e5"
+        ],
+        "production": [
+          "subnet-e0f938d1",
+          "subnet-a94805e4",
+          "subnet-89ae16a8",
+          "subnet-f3cd73ac",
+          "subnet-4a146344",
+          "subnet-832b99e5"
+        ],
+        "qa": [
+          "subnet-e0f938d1",
+          "subnet-a94805e4",
+          "subnet-89ae16a8",
+          "subnet-f3cd73ac",
+          "subnet-4a146344",
+          "subnet-832b99e5"
+        ],
+        "uat": [
+          "subnet-e0f938d1",
+          "subnet-a94805e4",
+          "subnet-89ae16a8",
+          "subnet-f3cd73ac",
+          "subnet-4a146344",
+          "subnet-832b99e5"
+        ]
+      },
+      "eu-west-2": {
+        "development": [
+          "subnet-93598be8",
+          "subnet-e720d5aa"
+        ],
+        "production": [
+          "subnet-1057856b",
+          "subnet-e023d6ad"
+        ]
+      }
+    },
+    "VPCmap": {
+      "us-east-1": {
+        "development": "vpc-784c8205",
+        "production": "vpc-784c8205",
+        "qa": "vpc-784c8205",
+        "uat": "vpc-784c8205"
+      },
+      "eu-west-2": {
+        "development": "vpc-fd58f194",
+        "production": "vpc-fd58f194"
+      }
+    }
+  },
+  "Resources": {
+    "GORILLASecurityGroup": {
+      "Type": "AWS::EC2::SecurityGroup",
+      "Properties": {
+        "GroupDescription": "Allow ports to BMR F",
+        "VpcId": {
+          "Fn::FindInMap": [
+            "VPCmap",
+            {
+              "Ref": "AWS::Region"
+            },
+            {
+              "Ref": "Environment"
+            }
+          ]
+        },
+        "SecurityGroupIngress": [
+          {
+            "IpProtocol": "tcp",
+            "FromPort": 80,
+            "ToPort": 80,
+            "CidrIp": "0.0.0.0/0"
+          },
+          {
+            "IpProtocol": "tcp",
+            "FromPort": 443,
+            "ToPort": 443,
+            "CidrIp": "0.0.0.0/0"
+          }
+        ]
+      }
+    },
+    "GORILLACluster": {
+      "Type": "AWS::ECS::Cluster",
+      "Properties": {}
+    },
+    "GORILLAServiceALB": {
+      "Type": "AWS::ECS::Service",
+      "DependsOn": [
+        "GORILLAHttpListener"
+      ],
+      "Properties": {
+        "Cluster": {
+          "Ref": "GORILLACluster"
+        },
+        "DesiredCount": {
+          "Fn::FindInMap": [
+            "GlobalMap",
+            "ASGMinSize",
+            {
+              "Ref": "Environment"
+            }
+          ]
+        },
+        "TaskDefinition": {
+          "Ref": "GORILLATaskDefinition"
+        },
+        "LoadBalancers": [
+          {
+            "ContainerName": "timeoff-gorilla",
+            "ContainerPort": 3000,
+            "TargetGroupArn": {
+              "Ref": "GORILLAProdTargetGroup"
+            }
+          }
+        ],
+        "Role": {
+          "Ref": "GorillaECSServiceRole"
+        },
+        "DeploymentConfiguration": {
+          "MinimumHealthyPercent": {
+            "Fn::FindInMap": [
+              "GlobalMap",
+              "MinimumHealthy",
+              {
+                "Ref": "Environment"
+              }
+            ]
+          }
+        }
+      }
+    },
+    "GorillaECSServiceRole": {
+      "Type": "AWS::IAM::Role",
+      "Properties": {
+        "AssumeRolePolicyDocument": {
+          "Statement": [
+            {
+              "Effect": "Allow",
+              "Principal": {
+                "Service": [
+                  "ecs.amazonaws.com"
+                ]
+              },
+              "Action": [
+                "sts:AssumeRole"
+              ]
+            }
+          ]
+        },
+        "Path": "/",
+        "Policies": [
+          {
+            "PolicyName": "ecs-service",
+            "PolicyDocument": {
+              "Statement": [
+                {
+                  "Effect": "Allow",
+                  "Action": [
+                    "elasticloadbalancing:DeregisterInstancesFromLoadBalancer",
+                    "elasticloadbalancing:DeregisterTargets",
+                    "elasticloadbalancing:Describe*",
+                    "elasticloadbalancing:RegisterInstancesWithLoadBalancer",
+                    "elasticloadbalancing:RegisterTargets",
+                    "ec2:Describe*",
+                    "ecr:*",
+                    "ec2:AuthorizeSecurityGroupIngress"
+                  ],
+                  "Resource": "*"
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    "GORILLAEC2Role": {
+      "Type": "AWS::IAM::Role",
+      "Properties": {
+        "AssumeRolePolicyDocument": {
+          "Statement": [
+            {
+              "Effect": "Allow",
+              "Principal": {
+                "Service": [
+                  "ec2.amazonaws.com"
+                ]
+              },
+              "Action": [
+                "sts:AssumeRole"
+              ]
+            }
+          ]
+        },
+        "Path": "/",
+        "Policies": [
+          {
+            "PolicyName": "ecs-service",
+            "PolicyDocument": {
+              "Statement": [
+                {
+                  "Effect": "Allow",
+                  "Action": [
+                    "ecs:CreateCluster",
+                    "ecs:DeregisterContainerInstance",
+                    "ecs:DiscoverPollEndpoint",
+                    "ecs:Poll",
+                    "ecr:*",
+                    "ecs:RegisterContainerInstance",
+                    "ecs:StartTelemetrySession",
+                    "ecs:Submit*",
+                    "logs:CreateLogStream",
+                    "logs:PutLogEvents"
+                  ],
+                  "Resource": "*"
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    "GORILLAEC2InstanceProfile": {
+      "Type": "AWS::IAM::InstanceProfile",
+      "Properties": {
+        "Path": "/",
+        "Roles": [
+          {
+            "Ref": "GORILLAEC2Role"
+          }
+        ]
+      }
+    },
+    "GORILLALoadBalancer": {
+      "Type": "AWS::ElasticLoadBalancingV2::LoadBalancer",
+      "Properties": {
+        "Scheme": "internet-facing",
+        "SecurityGroups": [
+          {
+            "Fn::FindInMap": [
+              "SecurityGroups",
+              {
+                "Ref": "AWS::Region"
+              },
+              {
+                "Ref": "Environment"
+              }
+            ]
+          },
+          {
+            "Ref": "GORILLASecurityGroup"
+          }
+        ],
+        "Subnets": {
+          "Fn::FindInMap": [
+            "VPCSubnetsMap",
+            {
+              "Ref": "AWS::Region"
+            },
+            {
+              "Ref": "Environment"
+            }
+          ]
+        }
+      }
+    },
+    "GORILLAHttpListener": {
+      "Type": "AWS::ElasticLoadBalancingV2::Listener",
+      "Properties": {
+        "DefaultActions": [
+          {
+            "Type": "forward",
+            "TargetGroupArn": {
+              "Ref": "GORILLAProdTargetGroup"
+            }
+          }
+        ],
+        "LoadBalancerArn": {
+          "Ref": "GORILLALoadBalancer"
+        },
+        "Port": 80,
+        "Protocol": "HTTP"
+      }
+    },
+    "GORILLAProdTargetGroup": {
+      "Type": "AWS::ElasticLoadBalancingV2::TargetGroup",
+      "Properties": {
+        "HealthCheckPath": "/login",
+        "HealthCheckPort": "80",
+        "Port": 80,
+        "Protocol": "HTTP",
+        "Matcher": {
+          "HttpCode": "200,302"
+        },
+        "HealthCheckIntervalSeconds": 30,
+        "HealthCheckTimeoutSeconds": 5,
+        "HealthyThresholdCount": 2,
+        "UnhealthyThresholdCount": 3,
+        "TargetGroupAttributes": [
+          {
+            "Key": "deregistration_delay.timeout_seconds",
+            "Value": "0"
+          }
+        ],
+        "VpcId": {
+          "Fn::FindInMap": [
+            "VPCmap",
+            {
+              "Ref": "AWS::Region"
+            },
+            {
+              "Ref": "Environment"
+            }
+          ]
+        }
+      }
+    },
+    "GorillaLaunchConfigProd": {
+      "Type": "AWS::AutoScaling::LaunchConfiguration",
+      "Properties": {
+        "KeyName": {
+          "Ref": "KeyName"
+        },
+        "ImageId": {
+          "Fn::FindInMap": [
+            "InstanceAMI",
+            {
+              "Ref": "AWS::Region"
+            },
+            {
+              "Ref": "Environment"
+            }
+          ]
+        },
+        "InstanceType": {
+          "Fn::FindInMap": [
+            "GlobalMap",
+            "InstType",
+            {
+              "Ref": "Environment"
+            }
+          ]
+        },
+        "SecurityGroups": [
+          {
+            "Fn::FindInMap": [
+              "SecurityGroups",
+              {
+                "Ref": "AWS::Region"
+              },
+              {
+                "Ref": "Environment"
+              }
+            ]
+          },
+          {
+            "Ref": "GORILLASecurityGroup"
+          }
+        ],
+        "IamInstanceProfile": {
+          "Ref": "GORILLAEC2InstanceProfile"
+        },
+        "UserData": {
+          "Fn::Base64": {
+            "Fn::Join": [
+              "",
+              [
+                "#!/bin/bash\n",
+                "yum install -y aws-cfn-bootstrap\n",
+                "echo 'ECS_CLUSTER=",
+                {
+                  "Ref": "GORILLACluster"
+                },
+                "' > /etc/ecs/ecs.config\n",
+                "/opt/aws/bin/cfn-signal -s true ",
+                "         --stack ",
+                {
+                  "Ref": "AWS::StackName"
+                },
+                "         --resource GORILLAASGroup ",
+                "         --region ",
+                {
+                  "Ref": "AWS::Region"
+                },
+                "\n"
+              ]
+            ]
+          }
+        }
+      }
+    },
+    "GORILLAASGroup": {
+      "Type": "AWS::AutoScaling::AutoScalingGroup",
+      "Properties": {
+        "DesiredCapacity": {
+          "Fn::FindInMap": [
+            "GlobalMap",
+            "ASGMinSize",
+            {
+              "Ref": "Environment"
+            }
+          ]
+        },
+        "VPCZoneIdentifier": {
+          "Fn::FindInMap": [
+            "VPCSubnetsMap",
+            {
+              "Ref": "AWS::Region"
+            },
+            {
+              "Ref": "Environment"
+            }
+          ]
+        },
+        "LaunchConfigurationName": {
+          "Ref": "GorillaLaunchConfigProd"
+        },
+        "MinSize": {
+          "Fn::FindInMap": [
+            "GlobalMap",
+            "ASGMinSize",
+            {
+              "Ref": "Environment"
+            }
+          ]
+        },
+        "TargetGroupARNs": [
+          {
+            "Ref": "GORILLAProdTargetGroup"
+          }
+        ],
+        "MaxSize": {
+          "Fn::FindInMap": [
+            "GlobalMap",
+            "ASGMaxSize",
+            {
+              "Ref": "Environment"
+            }
+          ]
+        },
+        "HealthCheckGracePeriod": 600,
+        "Tags": [
+          {
+            "Key": "Name",
+            "Value": {
+              "Fn::Join": [
+                "",
+                [
+                  "ECS Instance (Gorilla-NodeJS-",
+                  {
+                    "Ref": "Environment"
+                  },
+                  ")"
+                ]
+              ]
+            },
+            "PropagateAtLaunch": true
+          }
+        ],
+        "TerminationPolicies": [
+          "OldestInstance",
+          "OldestLaunchConfiguration"
+        ]
+      },
+      "CreationPolicy": {
+        "ResourceSignal": {
+          "Timeout": "PT5M",
+          "Count": "1"
+        }
+      },
+      "UpdatePolicy": {
+        "AutoScalingRollingUpdate": {
+          "MinInstancesInService": {
+            "Fn::FindInMap": [
+              "GlobalMap",
+              "ASGMinSize",
+              {
+                "Ref": "Environment"
+              }
+            ]
+          },
+          "MaxBatchSize": 1
+        }
+      }
+    }
+  },
+  "Outputs": {
+    "GORILLAAddress": {
+      "Description": "GORILLA ALB Address",
+      "Value": {
+        "Fn::GetAtt": [
+          "GORILLALoadBalancer",
+          "DNSName"
+        ]
+      }
+    },
+    "RegionOutput": {
+      "Description": "Region",
+      "Value": {
+        "Ref": "AWS::Region"
+      }
+    }
+  }
+}
